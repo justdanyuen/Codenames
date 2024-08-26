@@ -2,6 +2,7 @@ from players.guesser import Guesser
 from dotenv import load_dotenv
 import openai
 import os
+import time
 
 class AIGuesser(Guesser):
     def __init__(self, brown_ic=None, glove_vecs=None, word_vectors=None):
@@ -70,15 +71,16 @@ class AIGuesser(Guesser):
         - Words that contain a * are placeholders and should not be guessed
         """
         if self.new_clue:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": guesser_prompt}
-                ],
-                max_tokens=1000,
-                temperature=0.7
-            )
+            # response = openai.ChatCompletion.create(
+            #     model="gpt-3.5-turbo",
+            #     messages=[
+            #         {"role": "system", "content": "You are a helpful assistant."},
+            #         {"role": "user", "content": guesser_prompt}
+            #     ],
+            #     max_tokens=1000,
+            #     temperature=0.7
+            # )
+            response = self.get_openai_response(guesser_prompt)
             self.new_clue = False
             message_content = response['choices'][0]['message']['content']
             print(message_content)
@@ -89,6 +91,23 @@ class AIGuesser(Guesser):
         print(f'guess: {guess}')
         return guess
 
+    def get_openai_response(self, prompt):
+        """Handle OpenAI API rate limit by retrying after a delay."""
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                max_tokens=1000,
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response
+        except openai.error.RateLimitError:
+            print("Rate limit reached. Waiting for 20 seconds...")
+            time.sleep(20)
+            return self.get_openai_response(prompt)  # Retry after waiting
 
 def parse_guesses(text):
     # Find the content within <guesses> tags
