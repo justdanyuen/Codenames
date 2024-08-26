@@ -2,17 +2,19 @@ from players.codemaster import Codemaster  # Import the Codemaster class
 from dotenv import load_dotenv
 import openai
 import os
+import time
+
 class AICodemaster(Codemaster):
     def __init__(self, brown_ic=None, glove_vecs=None, word_vectors=None):
         super().__init__()
         load_dotenv()
         self.openai_key = os.getenv('OPENAI_KEY')  
         openai.api_key = self.openai_key
-      
+
     def set_game_state(self, words, maps):
         self.words = words
         self.maps = maps
-    
+
     def get_clue(self):
         codemaster_prompt = f"""
         You are a codemaster in the game Codenames. Your task is to provide a clue word that is semantically similar to as many 'Red' words as possible while avoiding words similar to 'Blue' and especially 'Assassin' words.
@@ -61,15 +63,18 @@ class AICodemaster(Codemaster):
         - Whenever you evaluate a potential clue word, always consider the risk of leading your team to 'Blue' or 'Assassin' words.
         """
         
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            max_tokens=1000,
-            temperature=0,
-            messages=[
-                {"role": "system", "content": "This prompt will be used in a python script in a function whenever the AI Codemaster has get_clue called."},
-                {"role": "user", "content": codemaster_prompt}
-            ]
-        )
+        # response = openai.ChatCompletion.create(
+        #     model="gpt-3.5-turbo",
+        #     max_tokens=1000,
+        #     temperature=0,
+        #     messages=[
+        #         {"role": "system", "content": "This prompt will be used in a python script in a function whenever the AI Codemaster has get_clue called."},
+        #         {"role": "user", "content": codemaster_prompt}
+        #     ]
+        # )
+
+        response = self.get_openai_response(codemaster_prompt)
+
 
         # Extract the content from the response
         message_content = response['choices'][0]['message']['content']
@@ -79,7 +84,25 @@ class AICodemaster(Codemaster):
         clue_word, number = self.parse_answer(message_content)
         
         return clue_word, number
-        
+
+    def get_openai_response(self, prompt):
+        """Handle OpenAI API rate limit by retrying after a delay."""
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",  # Replace with the correct OpenAI model name
+                max_tokens=1000,
+                temperature=0,
+                messages=[
+                    {"role": "system", "content": "This prompt will be used in a python script in a function whenever the AI Codemaster has get_clue called."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response
+        except openai.error.RateLimitError:
+            print("Rate limit reached. Waiting for 20 seconds...")
+            time.sleep(20)
+            return self.get_openai_response(prompt)  # Retry after waiting
+
     def parse_answer(self, text):
         try:
             # Ensure that <answer> tags are present
@@ -97,7 +120,7 @@ class AICodemaster(Codemaster):
                 raise ValueError("Expected at least two lines for clue and number.")
 
             # Extract Clue Word and Number
-            clue_word = lines[0].split(": ")[1].strip()
+            clue_word = lines[0].split(": ")[1].strip().replace("[", "").replace("]", "")
             number = int(lines[1].split(": ")[1].strip())
 
             return clue_word, number
@@ -105,3 +128,6 @@ class AICodemaster(Codemaster):
             print(f"Error parsing the clue: {e}")
             print(f"Raw AI Response: {text}")
             return "Unknown", 0
+
+# python run_game.py players.codemaster_openai.AICodemaster players.guesser_openai.AIGuesser --seed 3442
+# to run script
